@@ -175,6 +175,15 @@ def perform_control(control):
     turn_on_off_appliance(HVAC_STATUS, CYCLE_HVAC_STATUS, EXHAUST_STATUS, CIRCULATE_STATUS, addtnl_params)
 
 def turn_on_off_appliance(hvac, cycle_hvac, exhaust, circulate, kwargs=None):
+    
+    client = mqtt.Client("Thermal_comfort_publisher")
+    client.on_connect = on_connect
+    client.connect(PROD_BROKER, 1883, 60)
+    
+    client_test = mqtt.Client("Thermal_comfort_publisher")
+    client_test.on_connect = on_connect
+    client_test.connect(TEST_BROKER, 1883, 60)
+
     print hvac, cycle_hvac, exhaust, circulate,
     if kwargs is not None:
         if len(kwargs.keys()) == 2:
@@ -188,15 +197,39 @@ def turn_on_off_appliance(hvac, cycle_hvac, exhaust, circulate, kwargs=None):
                 mqtt_msg = 'system,2%d1' %f
                 client.publish('action/SEIL/Appliance_Test/0', mqtt_msg, 2) 
                 time.sleep(2)
+        else:
+            # turn off fans
+            for f in kwargs['fans']:
+                mqtt_msg = 'system,2%d0' %f
+                client.publish('action/SEIL/Appliance_Test/0', mqtt_msg, 2) 
+                time.sleep(2)
+
         if hvac:
             # turn on hvacs
-            client_test.publish('control/LHC/ACTX/3','1',2)
-            time.sleep(2)
-            client_test.publish('control/LHC/ACTX/4','1',2)
+            for i in range(2):
+                client_test.publish('control/LHC/ACTX/3','1',1)
+                time.sleep(1)
+            for i in range(2):
+                client_test.publish('control/LHC/ACTX/4','1',1)
+                time.sleep(1)
+        else:
+            # turn off hvacs
+            for i in range(2):
+                client_test.publish('control/LHC/ACTX/3','0',1)
+                time.sleep(1)
+            for i in range(2):
+                client_test.publish('control/LHC/ACTX/4','0',1)
+                time.sleep(1)
+
 
         if exhaust:
             # turn on exhaust to ventilate some air
-            client_test.publish('CONTROL/LHC/RELAY/101','1 0',2)
+            client_test.publish('CONTROL/LHC/RELAY/101','1 0',1)
+            time.sleep(2)
+        else:
+            # turn off exhaust fans
+            client_test.publish('CONTROL/LHC/RELAY/101','1 1',1)
+            time.sleep(2)
 
         if cycle_hvac:
             # cycle between hvacs
@@ -204,21 +237,46 @@ def turn_on_off_appliance(hvac, cycle_hvac, exhaust, circulate, kwargs=None):
             if kwargs['hvac_id'] == 3:
                 off_topic = 'control/LHC/ACTX/4'
             elif kwargs['hvac_id'] == 4:
-                off_topic = 'control/LHC/ACTX/4'
+                off_topic = 'control/LHC/ACTX/3'
 
-            client_test.publish(on_topic, '1', 2)
-            time.sleep(2)
-            client_test.publish(off_topic, '0', 2)
+            for i in range(2):
+                client_test.publish(on_topic, '1', 1)
+                time.sleep(1)
+            for i in range(2):
+                client_test.publish(off_topic, '0', 1)
+                time.sleep(1)
+
+            turn_off_fans_list = []
+            for fan in [1,2,3,4,5,6]:
+                if fan not in kwargs['fans']:
+                    turn_off_fans_list.append(fan)
+
+            for f in turn_off_fans_list:
+                mqtt_msg = 'system,2%d0' %f
+                client.publish('action/SEIL/Appliance_Test/0', mqtt_msg, 2) 
+                time.sleep(2)
+
+        #else:
+        #    # turn off hvacs
+        #    for i in range(2):
+        #        client_test.publish('control/LHC/ACTX/3','0',1)
+        #        time.sleep(1)
+        #    for i in range(2):
+        #        client_test.publish('control/LHC/ACTX/4','0',1)
+        #        time.sleep(1)
 
     else:
         # turn off everything
-        print 'hvacs off   ',
-        client_test.publish('control/LHC/ACTX/3','0',2)
-        time.sleep(2)
-        client_test.publish('control/LHC/ACTX/4','0',2)
-        time.sleep(2)
-        print 'exhaust off   ',
-        client_test.publish('CONTROL/LHC/RELAY/101','1 1',2)
+        print 'hvacs off   '
+        for i in range(2):
+            client_test.publish('control/LHC/ACTX/3','0',1)
+            time.sleep(1)
+
+        for i in range(2):
+            client_test.publish('control/LHC/ACTX/4','0',1)
+            time.sleep(1)
+        print 'exhaust off   '
+        client_test.publish('CONTROL/LHC/RELAY/101','1 1',1)
         time.sleep(2)
         print 'fans off'
         for f in [1,2,3,4,5,6]:
@@ -226,17 +284,23 @@ def turn_on_off_appliance(hvac, cycle_hvac, exhaust, circulate, kwargs=None):
             client.publish('action/SEIL/Appliance_Test/0', mqtt_msg, 2) 
             time.sleep(2)
 
+    client.disconnect()
+    client_test.disconnect()
+
 #----------------------------------------MQTT CONNECTION DETAILS--------------------------------------#
 def on_connect(client, userdata, flags, rc):
     print("Connected with result code "+str(rc))
+
+def on_connect(client, userdata, flags, rc):
+    print 'Disconnecting from broker'
+
     
-client = mqtt.Client("Thermal_comfort_publisher")
-client.on_connect = on_connect
-client.connect(PROD_BROKER, 1883, 60)
+
+#client.connect(PROD_BROKER, 1883, 60)
 
 client_test = mqtt.Client("Thermal_comfort_publisher_2")
 client_test.on_connect = on_connect
-client_test.connect(TEST_BROKER, 1883, 60)
+#client_test.connect(TEST_BROKER, 1883, 60)
 #------------------------------------------------------------------------------#
 
 # turn off all climate control 
@@ -292,6 +356,8 @@ while True:
                         
                         elif abs(avg_tmp - base_temp) >= 2.0:
                             control_str = 'circulate' 
+                        elif  avg_tmp > base_temp:
+                            control_str = 'hvac'
                         
                     elif zone in [3,4]:
                         if abs(avg_tmp - base_temp) < 2.0:
@@ -299,6 +365,9 @@ while True:
                         
                         elif abs(avg_tmp - base_temp) >= 2.0:
                             control_str = 'circulate'
+                        
+                        elif  avg_tmp > base_temp:
+                            control_str = 'hvac'
                     else:
                         control_str = 'circulate'  
 
@@ -325,7 +394,10 @@ while True:
                             control_str = 'circulate' 
                          
                     elif zone in [3,4]:
-                            control_str = 'circulate'
+                            if  avg_tmp > base_temp:
+                                control_str = 'hvac'
+                            else:
+                                control_str = 'circulate'
                     else:
                         control_str = 'circulate'
                          
@@ -342,6 +414,8 @@ while True:
                             control_str = 'ventilate' # natural ventilation
                     else:
                         control_str = 'circulate'
+            else:
+            	control_str = 'circulate'
 
 
         if prev_control == control_str:
@@ -356,8 +430,8 @@ while True:
 
         logger.write('%s, %s\n' %(out_str, status_str))
         logger.flush()
-        time.sleep(60)
-        
+        time.sleep(300)
+
     except KeyboardInterrupt:
         print 'Turning off climate control appliances'
         turn_on_off_appliance(0,0,0,0)

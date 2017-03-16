@@ -414,6 +414,8 @@ while True:
                             control_str = 'ventilate' # natural ventilation
                     else:
                         control_str = 'circulate'
+                else:
+                    control_str = 'circulate'
             else:
             	control_str = 'circulate'
 

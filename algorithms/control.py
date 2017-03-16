@@ -3,6 +3,8 @@ TODO:
 remaining part of the day
 cycle hvacs along with fans ON? motivation of cycling between ACs
 no inclusion of ambient temperature? internal temperature < ambient temperature?
+
+The following code controls climate for the given humidity and base temperature.
 '''
 
 
@@ -28,11 +30,14 @@ control_str = '' # current control
 prev_control = '' # previously taken decision
 prev_hvac_id = -1 # last turned on hvac
 
+# keep a tap on the status of each control
 CYCLE_HVAC_STATUS = 0
 HVAC_STATUS = 0
 CIRCULATE_STATUS = 0
 EXHAUST_STATUS = 0
 
+
+#mqtt brokers
 TEST_BROKER = '10.129.23.30'
 PROD_BROKER = '10.129.23.41'
 
@@ -117,6 +122,11 @@ def part_of_day():
 
 # perform the climate control
 def perform_control(control):
+    '''
+        perform the control
+        control: which appliances to be turned on/off
+        set the status flags as to which control to turn on/off
+    '''
     global prev_hvac_id, HVAC_STATUS, CYCLE_HVAC_STATUS, CIRCULATE_STATUS, EXHAUST_STATUS
     addtnl_params = dict() # to hold additional parameters to control
 
@@ -176,15 +186,19 @@ def perform_control(control):
 
 def turn_on_off_appliance(hvac, cycle_hvac, exhaust, circulate, kwargs=None):
     
+    # create client to control fans
     client = mqtt.Client("Thermal_comfort_publisher")
     client.on_connect = on_connect
     client.connect(PROD_BROKER, 1883, 60)
     
+    # create client to control acs and exhaust
     client_test = mqtt.Client("Thermal_comfort_publisher")
     client_test.on_connect = on_connect
     client_test.connect(TEST_BROKER, 1883, 60)
 
     print hvac, cycle_hvac, exhaust, circulate,
+    
+    # if any additional parameters are to be passed, like which AC, FANS to turn ON and which ones to turn off
     if kwargs is not None:
         if len(kwargs.keys()) == 2:
             print kwargs['hvac_id'], kwargs['fans']
@@ -284,6 +298,7 @@ def turn_on_off_appliance(hvac, cycle_hvac, exhaust, circulate, kwargs=None):
             client.publish('action/SEIL/Appliance_Test/0', mqtt_msg, 2) 
             time.sleep(2)
 
+    # disconnect the mqtt clients
     client.disconnect()
     client_test.disconnect()
 
